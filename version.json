@@ -1,6 +1,14 @@
 {
   "version": "2.4.2",
-  "notes": "Versao inicial",
-  "url": "https://seu-site.com/falcon-alarmes-setup.exe",
-  "date": "2026-03-05"
+  "notes": "Versao inicial com banco de dados",
+  "date": "2026-03-05",
+  "url": "https://github.com/O-Psy/falcon-releases",
+  "changes": [
+    "Sistema de login com autenticacao",
+    "Ordens de servico com PDF",
+    "Chat interno em tempo real",
+    "Check-in e Check-out de tecnicos",
+    "Rastreamento GPS",
+    "Cadastro de clientes e fichas"
+  ]
 }
