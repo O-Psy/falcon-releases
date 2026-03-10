@@ -428,6 +428,180 @@ tr:hover td{background:rgba(201,168,76,.025)}
 @media(max-width:600px){.ct-row{grid-template-columns:1fr 1fr;}.ct-del{margin-top:0}}
 
 </style>
+<script>
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// SUPABASE \u2014 Banco de Dados Compartilhado
+// \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+var SB_URL = 'https://jrvrnpsngctowtdmxrty.supabase.co';
+var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpydnJucHNuZ2N0b3d0ZG14cnR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI3MTQ3MTUsImV4cCI6MjA4ODI5MDcxNX0.48NbR8L6CWPOVLSv4FaEicrnevyfxY5OcWrncZeig1Q';
+var SB_ONLINE = false;
+var sbRealtimeConn = null;
+
+async function sbFetch(endpoint, method, body) {
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/' + endpoint, {
+      method: method || 'GET',
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': 'Bearer ' + SB_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (!r.ok) { console.error('SB erro', r.status); return null; }
+    if (r.status === 204) return true;
+    var ct = r.headers.get('content-type') || '';
+    return ct.includes('json') ? r.json() : true;
+  } catch(e) { console.error('SB:', e); return null; }
+}
+async function sbGet(t, q)         { return sbFetch(t + (q ? '?' + q : ''), 'GET'); }
+async function sbInsert(t, d)      { return sbFetch(t, 'POST', d); }
+async function sbUpdate(t, d, f, v){ return sbFetch(t + '?' + f + '=eq.' + encodeURIComponent(v), 'PATCH', d); }
+async function sbDelete(t, f, v)   { return sbFetch(t + '?' + f + '=eq.' + encodeURIComponent(v), 'DELETE'); }
+async function sbUpsert(t, d) {
+  var r = await fetch(SB_URL + '/rest/v1/' + t, {
+    method: 'POST',
+    headers: { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+               'Content-Type': 'application/json',
+               'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify(d)
+  });
+  return r.ok;
+}
+
+async function sbPing() {
+  try {
+    var r = await sbGet('usuarios', 'select=id&limit=1');
+    SB_ONLINE = Array.isArray(r);
+  } catch(e) { SB_ONLINE = false; }
+  sbUpdateStatus(SB_ONLINE);
+  return SB_ONLINE;
+}
+
+// Cache local (fallback offline)
+var SC = {
+  get: function(k)   { return JSON.parse(localStorage.getItem('sb_' + k) || (k==='msgs' ? '{}' : '[]')); },
+  set: function(k,v) { localStorage.setItem('sb_' + k, JSON.stringify(v)); }
+};
+
+// Mappers Supabase -> formato do app
+function sbMapUser(u) {
+  return { id: u.id, name: u.name, username: u.login, password: btoa(u.password),
+    role: u.role, color: u.color || '#C9A84C', ini: u.ini || 'US', active: u.active,
+    cargo: u.role==='admin' ? 'Administrador' : u.role==='monitor' ? 'Monitor' : 'T\u00E9cnico',
+    createdAt: u.created_at };
+}
+function sbMapClient(c) {
+  return { id: c.id, contrato: c.contrato, name: c.name, tel: c.tel, doc: c.doc,
+    rg: c.rg, email: c.email, rua: c.rua, num: c.num, bairro: c.bairro,
+    cidade: c.cidade, uf: c.uf, cep: c.cep, ref: c.ref, equip: c.equip,
+    contacts: c.contacts || [], active: c.active, createdAt: c.created_at };
+}
+function sbMapOrder(o) {
+  return { id: o.id, num: o.num, clientId: o.client_id, clientName: o.client_name,
+    tipo: o.tipo, desc: o.descricao, status: o.status, priority: o.priority,
+    techId: o.tech_id, techName: o.tech_name, address: o.address,
+    date: o.date_os, time: o.time_os, obs: o.obs || [],
+    createdAt: o.created_at, updatedAt: o.updated_at };
+}
+function sbMapChannel(c) {
+  return { id: c.id, name: c.name, icon: '\uD83D\uDCAC',
+    desc: c.canal_type === 'publico' ? 'Canal geral da equipe' : c.name,
+    vis: c.canal_type === 'publico' ? 'all' : 'role_tech',
+    members: c.members || [], createdAt: c.created_at };
+}
+function sbMapMsg(m) {
+  return { id: m.id, uid: m.user_id, nm: m.user_name, ini: m.user_ini,
+    clr: m.user_color, text: m.msg_text, ts: m.created_at };
+}
+
+// Carregar todos os dados do Supabase no DB local
+async function sbLoadAll() {
+  if (typeof toast === 'function') toast('Sincronizando...');
+  try {
+    var res = await Promise.all([
+      sbGet('usuarios',        'select=*'),
+      sbGet('clientes',        'select=*&active=eq.true'),
+      sbGet('ordens',          'select=*&order=created_at.desc'),
+      sbGet('chat_canais',     'select=*'),
+      sbGet('chat_mensagens',  'select=*&order=created_at.asc')
+    ]);
+    if (res[0]) { DB.users    = res[0].map(sbMapUser);    SC.set('users', DB.users); }
+    if (res[1]) { DB.clients  = res[1].map(sbMapClient);  SC.set('clients', DB.clients); }
+    if (res[2]) { DB.orders   = res[2].map(sbMapOrder);   SC.set('orders', DB.orders); }
+    if (res[3]) { DB.channels = res[3].map(sbMapChannel); SC.set('channels', DB.channels); }
+    if (res[4]) {
+      DB.msgs = {};
+      res[4].forEach(function(m) {
+        if (!DB.msgs[m.canal_id]) DB.msgs[m.canal_id] = [];
+        DB.msgs[m.canal_id].push(sbMapMsg(m));
+      });
+      SC.set('msgs', DB.msgs);
+    }
+    save();
+    if (typeof toast === 'function') toast('\u2705 Sincronizado!');
+    sbRealtime();
+  } catch(e) {
+    console.error('sbLoadAll:', e);
+    if (typeof toast === 'function') toast('\u26A0 Usando dados locais');
+  }
+}
+
+async function sbLoadMsgs(canalId) {
+  var msgs = await sbGet('chat_mensagens', 'canal_id=eq.' + canalId + '&order=created_at.asc');
+  if (msgs) {
+    DB.msgs[canalId] = msgs.map(sbMapMsg);
+    var all = SC.get('msgs'); all[canalId] = DB.msgs[canalId]; SC.set('msgs', all); save();
+  }
+}
+
+// Realtime WebSocket para chat ao vivo
+function sbRealtime() {
+  if (sbRealtimeConn) return;
+  try {
+    var ws = SB_URL.replace('https','wss') + '/realtime/v1/websocket?apikey=' + SB_KEY + '&vsn=1.0.0';
+    sbRealtimeConn = new WebSocket(ws);
+    sbRealtimeConn.onopen = function() {
+      sbRealtimeConn.send(JSON.stringify({
+        topic:'realtime:public:chat_mensagens', event:'phx_join', payload:{}, ref:'1'
+      }));
+    };
+    sbRealtimeConn.onmessage = function(e) {
+      try {
+        var d = JSON.parse(e.data);
+        if (d.event === 'INSERT' && d.topic && d.topic.includes('chat_mensagens')) {
+          var rec = d.payload && d.payload.record;
+          if (rec && typeof curCh !== 'undefined' && curCh && rec.canal_id === curCh.id) {
+            sbLoadMsgs(curCh.id).then(function() {
+              if (typeof renderChMsgs === 'function') renderChMsgs();
+            });
+          }
+        }
+      } catch(ex) {}
+    };
+    sbRealtimeConn.onerror = function() { sbRealtimeConn = null; };
+    sbRealtimeConn.onclose = function() {
+      sbRealtimeConn = null;
+      if (typeof CU !== 'undefined' && CU) setTimeout(sbRealtime, 5000);
+    };
+  } catch(e) { sbRealtimeConn = null; }
+}
+
+// Indicador Online/Offline
+function sbUpdateStatus(online) {
+  var el = document.getElementById('_sb_status');
+  if (!el) {
+    el = document.createElement('div'); el.id = '_sb_status';
+    el.style.cssText = 'position:fixed;bottom:8px;right:12px;font-size:10px;font-family:Barlow,sans-serif;z-index:9998;opacity:.7;pointer-events:none';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = online
+    ? '\u2022 <span style="color:#2ECC71">ONLINE</span>'
+    : '\u2022 <span style="color:#E74C3C">OFFLINE</span>';
+}
+</script>
+
 </head>
 <body>
 
@@ -945,15 +1119,22 @@ function doLogin(){
   const e=document.getElementById('lerr'),lk=document.getElementById('lock-msg');
   e.style.display='none';lk.style.display='none';
   if(!un||!pw){showErr('Preencha usu\u00E1rio e senha.');return}
-  if(isLocked(un)){lk.textContent=`Conta bloqueada. Tente em ${lockMin(un)} minuto(s).`;lk.style.display='block';return}
-  const user=DB.users.find(u=>u.username.toLowerCase()===un&&atob(u.password)===pw&&u.active);
+  if(isLocked(un)){lk.textContent='Conta bloqueada. Tente em '+lockMin(un)+' minuto(s).';lk.style.display='block';return}
+  // Tentar login local primeiro (cache)
+  const user=DB.users.find(u=>u.username&&u.username.toLowerCase()===un&&atob(u.password)===pw&&u.active);
   if(!user){
     recAtt(un);
     const rem=MAX_ATT-getAtt(un).n;
-    showErr(rem>0?`Usu\u00E1rio ou senha inv\u00E1lidos. ${rem} tentativa(s) restante(s).`:'Conta bloqueada por 5 minutos.');
+    showErr(rem>0?'Usu\u00E1rio ou senha inv\u00E1lidos. '+rem+' tentativa(s) restante(s).':'Conta bloqueada por 5 minutos.');
     document.getElementById('lp').value='';return;
   }
-  resetAtt(un);CU=user;S.set('sess',{uid:user.id,ts:Date.now()});startApp();
+  resetAtt(un);CU=user;startApp();
+  // Sincronizar com Supabase em background apos login
+  sbPing().then(function(online){
+    if(online) sbLoadAll().then(function(){
+      if(typeof refreshCurrentPage==='function') refreshCurrentPage();
+    });
+  });
 }
 function showErr(m){const e=document.getElementById('lerr');e.textContent=m;e.style.display='block'}
 function doLogout(){
@@ -961,6 +1142,12 @@ function doLogout(){
   document.getElementById('app').classList.remove('on');document.getElementById('ls').style.display='flex';
   document.getElementById('lu').value='';document.getElementById('lp').value='';document.getElementById('lerr').style.display='none';
   go('dashboard');
+  // Sincronizar com Supabase em background
+  sbPing().then(function(online){
+    if(online) sbLoadAll().then(function(){
+      refreshDash();renderOS();renderCli();renderUsr();buildChList();
+    });
+  });
 }
 document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
 document.getElementById('lu').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('lp').focus()});
@@ -981,6 +1168,12 @@ function startApp(){
   if(isA)document.getElementById('btn-new-ch').style.display='';
   updateDate();startClock();refreshDash();renderOS();renderCli();renderUsr();renderRel();buildChList();updateCiOS();
   go('dashboard');
+  // Sincronizar com Supabase em background
+  sbPing().then(function(online){
+    if(online) sbLoadAll().then(function(){
+      refreshDash();renderOS();renderCli();renderUsr();buildChList();
+    });
+  });
 }
 
 window.addEventListener('DOMContentLoaded',()=>{
@@ -1115,7 +1308,12 @@ function saveOS(){
     priority:pri,status:pri==='urgente'?'urgente':'pendente',date:document.getElementById('os-dt').value,
     time:document.getElementById('os-hr').value,address:document.getElementById('os-end').value,
     desc:document.getElementById('os-desc').value,createdAt:ts(),createdBy:CU.id,obs:[]};
-  DB.orders.push(o);save();closeM('m-os');
+  DB.orders.push(o);save();
+  if(SB_ONLINE){
+    DB=loadDB();const o=DB.orders[DB.orders.length-1];
+    if(o) sbUpsert('ordens',{id:o.id,num:o.num,client_id:o.clientId,client_name:o.clientName,tipo:o.tipo,descricao:o.desc,status:o.status,priority:o.priority,tech_id:o.techId,tech_name:o.techName,address:o.address,date_os:o.date,time_os:o.time,obs:o.obs});
+  }
+  closeM('m-os');
   ['os-dt','os-hr','os-end','os-desc'].forEach(i=>document.getElementById(i).value='');
   document.getElementById('os-cli').value='';document.getElementById('os-tipo').value='';
   renderOS();refreshDash();updateCiOS();addNtf(`Nova OS #${o.num} \u2013 ${o.clientName}`,'\u1F4CB');toast('\u2705 OS #'+o.num+' criada!');
@@ -1165,7 +1363,7 @@ function delOS(id){
   if(CU.role!=='admin'){toast('\u26D4 Somente administradores');return}
   DB=loadDB();const o=DB.orders.find(x=>x.id===id);if(!o)return;
   confirm2('Excluir OS',`Excluir OS #${o.num} permanentemente?`,()=>{
-    DB.orders=DB.orders.filter(x=>x.id!==id);save();renderOS();refreshDash();toast('\u1F5D1\uFE0F OS exclu\u00EDda');
+    DB.orders=DB.orders.filter(x=>x.id!==id);save();if(SB_ONLINE)sbDelete('ordens','id',id);renderOS();refreshDash();toast('\u1F5D1\uFE0F OS exclu\u00EDda');
   });
 }
 function populateOS(){
@@ -1286,6 +1484,11 @@ function selCh(id){
   document.getElementById('ch-inp').focus();
 }
 function renderChMsgs(){
+  if(!curCh)return;
+  if(SB_ONLINE){sbLoadMsgs(curCh.id).then(function(){_renderChMsgsLocal();});}
+  else{DB=loadDB();_renderChMsgsLocal();}
+}
+function _renderChMsgsLocal(){
   if(!curCh)return;DB=loadDB();
   const msgs=DB.msgs[curCh.id]||[];
   const el=document.getElementById('ch-body');
@@ -1301,6 +1504,10 @@ function sendMsg(){
   DB=loadDB();if(!DB.msgs[curCh.id])DB.msgs[curCh.id]=[];
   DB.msgs[curCh.id].push({id:uid(),uid:CU.id,nm:CU.name,ini:CU.ini,clr:CU.color,text:txt,ts:ts()});
   save();inp.value='';renderChMsgs();buildChList();
+  if(SB_ONLINE && curCh){
+    const msgs=DB.msgs[curCh.id]||[];const m=msgs[msgs.length-1];
+    if(m) sbInsert('chat_mensagens',{id:m.id,canal_id:curCh.id,user_id:m.uid,user_name:m.nm,user_ini:m.ini,user_color:m.clr,msg_text:m.text});
+  }
 }
 function toggleMemberSelect(){
   const v=document.getElementById('ch-vis').value;
@@ -1347,11 +1554,16 @@ function saveUsr(){
     DB.users.push({id:uid(),name:nm,username:un,password:btoa(pw),role,cargo:document.getElementById('u-cargo').value.trim(),tel:document.getElementById('u-tel').value.trim(),doc:document.getElementById('u-doc').value.trim(),color:RC[role],ini:ini(nm),active:true,createdAt:ts()});
     toast('\u2705 Usu\u00E1rio criado!');addNtf(`Novo usu\u00E1rio: ${nm}`,'\u1F464');
   }
-  save();closeM('m-usr');renderUsr();buildChList();editUsrId=null;
+  save();
+  if(SB_ONLINE){
+    DB=loadDB();const u=DB.users[DB.users.length-1];
+    if(u) sbUpsert('usuarios',{id:u.id,name:u.name,login:u.username,password:atob(u.password),role:u.role,color:u.color,ini:u.ini,active:u.active});
+  }
+  closeM('m-usr');renderUsr();buildChList();editUsrId=null;
 }
 function editUsr(id){DB=loadDB();const u=DB.users.find(x=>x.id===id);if(!u)return;editUsrId=id;document.getElementById('m-usr-t').textContent='Editar Usu\u00E1rio';document.getElementById('u-btn').textContent='Salvar';document.getElementById('u-nm').value=u.name;document.getElementById('u-un').value=u.username;document.getElementById('u-role').value=u.role;document.getElementById('u-cargo').value=u.cargo||'';document.getElementById('u-tel').value=u.tel||'';document.getElementById('u-doc').value=u.doc||'';document.getElementById('u-pw').value='';document.getElementById('u-pw').placeholder='Em branco = n\u00E3o alterar';openM('m-usr')}
 function toggleUsr(id){DB=loadDB();const u=DB.users.find(x=>x.id===id);if(!u||u.id===CU.id)return;confirm2(u.active?'Desativar':'Ativar',`${u.active?'Desativar':'Ativar'} ${u.name}?`,()=>{u.active=!u.active;save();renderUsr();toast(`\u2705 ${u.name} ${u.active?'ativado':'desativado'}`)})}
-function delUsr(id){DB=loadDB();const u=DB.users.find(x=>x.id===id);if(!u||u.id===CU.id)return;confirm2('Excluir Usu\u00E1rio',`Excluir permanentemente ${u.name}?`,()=>{DB.users=DB.users.filter(x=>x.id!==id);save();renderUsr();toast('\u1F5D1\uFE0F Usu\u00E1rio exclu\u00EDdo')})}
+function delUsr(id){DB=loadDB();const u=DB.users.find(x=>x.id===id);if(!u||u.id===CU.id)return;confirm2('Excluir Usu\u00E1rio',`Excluir permanentemente ${u.name}?`,()=>{DB.users=DB.users.filter(x=>x.id!==id);save();if(SB_ONLINE)sbDelete('usuarios','id',id);renderUsr();toast('\u1F5D1\uFE0F Usu\u00E1rio exclu\u00EDdo')})}
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 CLIENTS \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 function renderCli(){
@@ -1476,7 +1688,9 @@ function saveCli(){
     contacts:JSON.parse(JSON.stringify(extraContacts))};
   if(editCliId){const i=DB.clients.findIndex(x=>x.id===editCliId);if(i>=0)DB.clients[i]=data;toast('\u2705 Cliente atualizado!');}
   else{DB.clients.push(data);toast('\u2705 Cliente cadastrado!');}
-  save();closeM('m-cli');renderCli();editCliId=null;extraContacts=[];
+  save();
+  if(SB_ONLINE){DB=loadDB();var cl=editCliId?DB.clients.find(x=>x.id===editCliId):DB.clients[DB.clients.length-1];if(cl)sbUpsert('clientes',{id:cl.id,contrato:cl.contrato,name:cl.name,tel:cl.tel,doc:cl.doc,rg:cl.rg,email:cl.email,rua:cl.rua,num:cl.num,bairro:cl.bairro,cidade:cl.cidade,uf:cl.uf,cep:cl.cep,ref:cl.ref,equip:cl.equip,contacts:cl.contacts,active:cl.active});}
+  closeM('m-cli');renderCli();editCliId=null;extraContacts=[];
 }
 function editCli(id){
   DB=loadDB();const c=DB.clients.find(x=>x.id===id);if(!c)return;
@@ -1523,7 +1737,7 @@ function viewCli(id){
   <button class="btn bg" onclick="closeM('m-os-det');editCli('${id}')">Editar</button>`;
   openM('m-os-det');
 }
-function delCli(id){DB=loadDB();const c=DB.clients.find(x=>x.id===id);if(!c)return;confirm2('Excluir Cliente',`Excluir ${c.name}?`,()=>{DB.clients=DB.clients.filter(x=>x.id!==id);save();renderCli();toast('\u1F5D1\uFE0F Exclu\u00EDdo')})}
+function delCli(id){DB=loadDB();const c=DB.clients.find(x=>x.id===id);if(!c)return;confirm2('Excluir Cliente',`Excluir ${c.name}?`,()=>{DB.clients=DB.clients.filter(x=>x.id!==id);save();if(SB_ONLINE)sbDelete('clientes','id',id);renderCli();toast('\u1F5D1\uFE0F Exclu\u00EDdo')})}
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 MODALS \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 function openM(id){
