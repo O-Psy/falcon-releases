@@ -531,6 +531,16 @@ async function sbLoadAll() {
     if (res[1]) { DB.clients  = res[1].map(sbMapClient);  SC.set('clients', DB.clients); }
     if (res[2]) { DB.orders   = res[2].map(sbMapOrder);   SC.set('orders', DB.orders); }
     if (res[3]) { DB.channels = res[3].map(sbMapChannel); SC.set('channels', DB.channels); }
+    // Carregar ciLog do dia de hoje
+    var today = new Date().toISOString().split('T')[0];
+    var ciRes = await sbGet('checkin_log', 'ts=gte.' + today + 'T00:00:00&order=ts.asc');
+    if (ciRes) {
+      DB.ciLog = ciRes.map(function(l){
+        return {id:l.id, type:l.log_type, userId:l.user_id, userName:l.user_name,
+                os:l.os||'', time:l.time_ci, ts:l.ts};
+      });
+      SC.set('ciLog', DB.ciLog);
+    }
     if (res[4]) {
       DB.msgs = {};
       res[4].forEach(function(m) {
@@ -1145,7 +1155,7 @@ function doLogout(){
   // Sincronizar com Supabase em background
   sbPing().then(function(online){
     if(online) sbLoadAll().then(function(){
-      refreshDash();renderOS();renderCli();renderUsr();buildChList();
+      refreshDash();renderOS();renderCli();renderUsr();buildChList();renderCILog();renderTechList();
     });
   });
 }
@@ -1171,7 +1181,7 @@ function startApp(){
   // Sincronizar com Supabase em background
   sbPing().then(function(online){
     if(online) sbLoadAll().then(function(){
-      refreshDash();renderOS();renderCli();renderUsr();buildChList();
+      refreshDash();renderOS();renderCli();renderUsr();buildChList();renderCILog();renderTechList();
     });
   });
 }
@@ -1187,10 +1197,11 @@ function go(id){
   document.getElementById('pg-'+id)?.classList.add('on');
   document.querySelectorAll('.ni').forEach(n=>{if(n.getAttribute('onclick')?.includes("'"+id+"'"))n.classList.add('on')});
   closeSb();closeNtf();
-  if(id==='gps')setTimeout(initMap,80);
+  if(id==='gps'){setTimeout(initMap,80);setTimeout(renderTechList,200);}
   if(id==='dashboard')refreshDash();
   if(id==='ordens')renderOS();
   if(id==='relatorios')renderRel();
+  if(id==='checkin'){renderCILog();updateCiOS();}
 }
 function toggleSb(){const s=document.getElementById('sb'),h=document.getElementById('hbg'),o=document.getElementById('sb-ov');s.classList.toggle('mob-open');h.classList.toggle('open');o.classList.toggle('on')}
 function closeSb(){document.getElementById('sb').classList.remove('mob-open');document.getElementById('hbg').classList.remove('open');document.getElementById('sb-ov').classList.remove('on')}
@@ -1383,6 +1394,7 @@ function toggleCI(){
     btn.style.background='var(--red)';btn.style.color='#fff';btn.textContent='\u2717 FAZER CHECK-OUT';info.textContent='Check-in \u00E0s '+t;
     const r={id:uid(),type:'in',userId:CU.id,userName:CU.name,ts:ts(),time:t,os};
     DB.ciLog.push(r);save();
+    if(SB_ONLINE)sbInsert('checkin_log',{id:r.id,log_type:'in',user_id:r.userId,user_name:r.userName,os:r.os||null,time_ci:r.time});
     if(log.querySelector('div[style]'))log.innerHTML='';
     const li=document.createElement('div');li.className='ci-li';
     li.innerHTML=`<div class="ci-li-l"><span class="cin">\u25B2 CHECK-IN</span> \u00B7 ${CU.name}${os?' \u00B7 '+os:''}</div><div class="ci-dur">${t}</div>`;
@@ -1395,6 +1407,7 @@ function toggleCI(){
     info.textContent=`Entrada: ${ciStart} \u00B7 Sa\u00EDda: ${t}`;
     const r={id:uid(),type:'out',userId:CU.id,userName:CU.name,ts:ts(),time:t,os};
     DB.ciLog.push(r);save();
+    if(SB_ONLINE)sbInsert('checkin_log',{id:r.id,log_type:'out',user_id:r.userId,user_name:r.userName,os:r.os||null,time_ci:r.time});
     const li=document.createElement('div');li.className='ci-li';
     const dur=calcDur(ciStart,t);
     li.innerHTML=`<div class="ci-li-l"><span class="cout">\u25BC CHECK-OUT</span> \u00B7 ${CU.name}${os?' \u00B7 '+os:''}</div><div class="ci-dur">${t} \u00B7 ${dur}</div>`;
@@ -1402,6 +1415,76 @@ function toggleCI(){
     addNtf(`${CU.name} fez check-out${dur?' ('+dur+')':''}`,'\u1F4CD');toast('\u2705 Check-out: '+t);refreshDash();
   }
 }
+// Renderizar historico do dia no checkin
+function renderCILog(){
+  DB=loadDB();
+  const log=document.getElementById('ci-log');
+  if(!log)return;
+  const today=new Date().toDateString();
+  const recs=DB.ciLog.filter(function(l){return new Date(l.ts).toDateString()===today;});
+  if(!recs.length){
+    log.innerHTML='<div style="text-align:center;padding:20px;color:var(--gray);font-size:12px">Nenhum registro hoje</div>';
+    return;
+  }
+  log.innerHTML='';
+  recs.slice().reverse().forEach(function(r){
+    const li=document.createElement('div');li.className='ci-li';
+    const isIn=r.type==='in';
+    const out=!isIn&&recs.find(function(x){return x.userId===r.userId&&x.type==='in'&&x.ts<r.ts;});
+    const dur=(!isIn&&out)?calcDur(out.time,r.time):'';
+    li.innerHTML=(isIn
+      ?'<div class="ci-li-l"><span class="cin">\u25B2 CHECK-IN</span> \u00B7 '+r.userName+(r.os?' \u00B7 '+r.os:'')+'</div><div class="ci-dur">'+r.time+'</div>'
+      :'<div class="ci-li-l"><span class="cout">\u25BC CHECK-OUT</span> \u00B7 '+r.userName+(r.os?' \u00B7 '+r.os:'')+'</div><div class="ci-dur">'+r.time+(dur?' \u00B7 '+dur:'')+'</div>');
+    log.appendChild(li);
+  });
+  log.scrollTop=log.scrollHeight;
+  // Restaurar estado do botao de checkin do usuario atual
+  const myLastIn=recs.filter(function(l){return l.userId===CU.id&&l.type==='in';}).pop();
+  const myLastOut=recs.filter(function(l){return l.userId===CU.id&&l.type==='out';}).pop();
+  const stillIn=myLastIn&&(!myLastOut||myLastOut.ts<myLastIn.ts);
+  if(stillIn&&!ciOn){
+    ciOn=true;ciStart=myLastIn.time;
+    const btn=document.getElementById('ci-btn');
+    const st=document.getElementById('ci-st');
+    const info=document.getElementById('ci-info');
+    if(btn){btn.style.background='var(--red)';btn.style.color='#fff';btn.textContent='\u2717 FAZER CHECK-OUT';}
+    if(st){st.textContent='EM SERVI\u00C7O';st.style.color='var(--green)';}
+    if(info)info.textContent='Check-in \u00E0s '+myLastIn.time;
+  } else if(!stillIn&&ciOn){
+    ciOn=false;
+    const btn=document.getElementById('ci-btn');
+    const st=document.getElementById('ci-st');
+    if(btn){btn.style.background='var(--green)';btn.style.color='#000';btn.textContent='\u2713 FAZER CHECK-IN';}
+    if(st){st.textContent='FORA';st.style.color='var(--red)';}
+  }
+}
+
+// Renderizar lista de tecnicos em campo no GPS
+function renderTechList(){
+  DB=loadDB();
+  const tl=document.getElementById('t-list');
+  if(!tl)return;
+  const today=new Date().toDateString();
+  const active=DB.ciLog.filter(function(l){
+    if(l.type!=='in')return false;
+    if(new Date(l.ts).toDateString()!==today)return false;
+    return!DB.ciLog.find(function(x){return x.userId===l.userId&&x.type==='out'&&x.ts>l.ts;});
+  });
+  if(!active.length){
+    tl.innerHTML='<div style="padding:12px;text-align:center;color:var(--gray);font-size:12px">Nenhum t\u00E9cnico em campo</div>';
+    return;
+  }
+  tl.innerHTML=active.map(function(l){
+    const u=DB.users.find(function(x){return x.id===l.userId;});
+    if(!u)return'';
+    return'<div class="t-item"><div class="av" style="width:32px;height:32px;font-size:13px;background:'+u.color+'">'+u.ini+'</div>'
+      +'<div style="flex:1"><div style="font-size:13px;font-weight:600">'+u.name+'</div>'
+      +'<div style="font-size:11px;color:var(--gray)">'+(l.os||'Sem OS')+' \u00B7 desde '+l.time+'</div></div>'
+      +'<span class="bx bd">Ativo</span></div>';
+  }).join('');
+}
+
+
 function calcDur(s,e){
   try{const[sh,sm]=s.split(':').map(Number),[eh,em]=e.split(':').map(Number);let d=(eh*60+em)-(sh*60+sm);if(d<0)d+=1440;const h=Math.floor(d/60),m=d%60;return h?`${h}h${m}min`:`${m}min`}catch{return''}
 }
