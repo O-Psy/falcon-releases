@@ -1,12 +1,12 @@
 {
-  "version": "2.4.3",
-  "notes": "Correcoes de check-in e rastreamento",
+  "version": "2.4.5",
+  "notes": "GPS e Check-in corrigidos definitivamente",
   "date": "2026-03-11",
   "url": "https://github.com/O-Psy/falcon-releases",
   "changes": [
-    "Historico de check-in/out agora aparece corretamente",
-    "Tecnicos em campo visiveis no GPS",
-    "Dashboard sincroniza tecnicos em tempo real",
-    "Check-in salvo no banco de dados Supabase"
+    "GPS nao mostra mais tecnicos sem check-in",
+    "Popup do mapa sem caracteres errados",
+    "Check-out limpa tecnicos do mapa corretamente",
+    "Logout limpa historico do dia automaticamente"
   ]
 }

@@ -1148,7 +1148,7 @@ function doLogin(){
 }
 function showErr(m){const e=document.getElementById('lerr');e.textContent=m;e.style.display='block'}
 function doLogout(){
-  CU=null;S.del('sess');if(movT)clearInterval(movT);mapOk=false;leafMap=null;curCh=null;
+  CU=null;S.del('sess');localStorage.removeItem('ciLog');localStorage.removeItem('sb_ciLog');if(movT)clearInterval(movT);mapOk=false;leafMap=null;curCh=null;
   document.getElementById('app').classList.remove('on');document.getElementById('ls').style.display='flex';
   document.getElementById('lu').value='';document.getElementById('lp').value='';document.getElementById('lerr').style.display='none';
   go('dashboard');
@@ -1163,6 +1163,21 @@ document.getElementById('lp').addEventListener('keydown',e=>{if(e.key==='Enter')
 document.getElementById('lu').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('lp').focus()});
 
 function startApp(){
+  // Limpar ciLog de dias anteriores do localStorage
+  try{
+    var raw=JSON.parse(localStorage.getItem('ciLog')||'[]');
+    var today=new Date().toDateString();
+    var todayOnly=raw.filter(function(l){return new Date(l.ts).toDateString()===today;});
+    if(todayOnly.length!==raw.length){
+      localStorage.setItem('ciLog',JSON.stringify(todayOnly));
+    }
+    // Limpar cache Supabase ciLog tambem
+    var sbci=JSON.parse(localStorage.getItem('sb_ciLog')||'[]');
+    var sbToday=sbci.filter(function(l){return new Date(l.ts).toDateString()===today;});
+    if(sbToday.length!==sbci.length){
+      localStorage.setItem('sb_ciLog',JSON.stringify(sbToday));
+    }
+  }catch(e){}
   DB=loadDB();
   document.getElementById('ls').style.display='none';
   document.getElementById('app').classList.add('on');
@@ -1511,7 +1526,19 @@ function initMap(){
   }catch(e){console.warn('Mapa error:',e);toast('\u26A0\uFE0F Erro ao carregar mapa');}
 }
 function mkTIc(t){if(typeof L==='undefined')return{};return L.divIcon({className:'',html:`<div style="position:relative"><div style="width:40px;height:40px;border-radius:50%;background:${t.color};display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:13px;color:#000;box-shadow:0 0 10px ${t.color};cursor:pointer">${t.ini}</div>${t.active?`<div style="position:absolute;bottom:-1px;right:-1px;width:10px;height:10px;background:#2ECC71;border-radius:50%;border:2px solid #111"></div>`:''}</div>`,iconSize:[40,40],iconAnchor:[20,20],popupAnchor:[0,-22]})}
-function addTMk(t){if(!leafMap||typeof L==='undefined')return;if(techMks[t.id])try{leafMap.removeLayer(techMks[t.id]);}catch(e){};const m=L.marker([t.lat,t.lng],{icon:mkTIc(t)});m.bindPopup(`<div style="background:#1A1A1A;color:#F5F0E8;padding:11px;min-width:170px;font-family:Barlow,sans-serif;border:1px solid rgba(201,168,76,.2)"><div style="font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:${t.color};margin-bottom:7px">${t.name}</div><div style="font-size:12px;color:#888">\u1F4CB ${t.os}</div><div style="font-size:12px;color:#888;margin-top:3px">\u1F550 ${t.time}</div><div style="margin-top:8px"><span style="background:rgba(46,204,113,.15);color:#2ECC71;padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:1px">\u25CF ATIVO</span></div></div>`,{maxWidth:200,className:''});m.addTo(leafMap);techMks[t.id]=m}
+function addTMk(t){
+  if(!leafMap||typeof L==='undefined'||!t.lat||!t.lng)return;
+  if(techMks[t.id])try{leafMap.removeLayer(techMks[t.id]);}catch(e){}
+  var popup='<div style="background:#1A1A1A;color:#F5F0E8;padding:11px;min-width:170px;font-family:Barlow,sans-serif;border:1px solid rgba(201,168,76,.2)">'
+    +'<div style="font-family:Barlow Condensed,sans-serif;font-size:14px;font-weight:700;color:'+t.color+';margin-bottom:7px">'+t.name+'</div>'
+    +'<div style="font-size:12px;color:#888">\uD83D\uDCCB '+(t.os||'Em campo')+'</div>'
+    +'<div style="font-size:12px;color:#888;margin-top:3px">\uD83D\uDD50 '+t.time+'</div>'
+    +'<div style="margin-top:8px"><span style="background:rgba(46,204,113,.15);color:#2ECC71;padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:1px">\u25CF ATIVO</span></div>'
+    +'</div>';
+  var m=L.marker([t.lat,t.lng],{icon:mkTIc(t)});
+  m.bindPopup(popup,{maxWidth:200,className:''});
+  m.addTo(leafMap);techMks[t.id]=m;
+}
 function renderTList(){const el=document.getElementById('t-list');if(!el)return;if(!GPS_T.length){el.innerHTML='<div style="padding:18px;text-align:center;color:var(--gray);font-size:12px">Nenhum t\u00E9cnico</div>';return}el.innerHTML=GPS_T.map(t=>`<div class="ti" onclick="flyTo('${t.id}')"><div class="tdot" style="background:${t.color}"></div><div><div style="font-size:12.5px;font-weight:700">${t.name}</div><div style="font-size:11px;color:var(--gray)">${t.os}</div><div style="font-size:10px;color:var(--gold);margin-top:2px">\u1F550 ${t.time}</div></div></div>`).join('')}
 function flyTo(id){const t=GPS_T.find(x=>x.id===id);if(!t||!leafMap)return;leafMap.flyTo([t.lat,t.lng],16,{duration:1.2});techMks[id]?.openPopup()}
 function getMyLoc(){
