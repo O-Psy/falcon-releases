@@ -1,14 +1,12 @@
 {
-  "version": "2.4.2",
-  "notes": "Versao inicial com banco de dados",
-  "date": "2026-03-05",
+  "version": "2.4.3",
+  "notes": "Correcoes de check-in e rastreamento",
+  "date": "2026-03-11",
   "url": "https://github.com/O-Psy/falcon-releases",
   "changes": [
-    "Sistema de login com autenticacao",
-    "Ordens de servico com PDF",
-    "Chat interno em tempo real",
-    "Check-in e Check-out de tecnicos",
-    "Rastreamento GPS",
-    "Cadastro de clientes e fichas"
+    "Historico de check-in/out agora aparece corretamente",
+    "Tecnicos em campo visiveis no GPS",
+    "Dashboard sincroniza tecnicos em tempo real",
+    "Check-in salvo no banco de dados Supabase"
   ]
 }
