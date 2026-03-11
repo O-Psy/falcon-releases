@@ -1,12 +1,1 @@
-{
-  "version": "2.4.5",
-  "notes": "GPS e Check-in corrigidos definitivamente",
-  "date": "2026-03-11",
-  "url": "https://github.com/O-Psy/falcon-releases",
-  "changes": [
-    "GPS nao mostra mais tecnicos sem check-in",
-    "Popup do mapa sem caracteres errados",
-    "Check-out limpa tecnicos do mapa corretamente",
-    "Logout limpa historico do dia automaticamente"
-  ]
-}
+{"version":"2.4.7","notes":"GPS automatico no check-in","date":"2026-03-11","changes":["GPS inicia automaticamente ao fazer check-in","Tecnico aparece no mapa em tempo real","GPS para automaticamente no check-out","Sem mais marcadores falsos no mapa"]}
