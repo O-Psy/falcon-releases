@@ -1,1 +1,1 @@
-{"version":"2.4.7","notes":"GPS automatico no check-in","date":"2026-03-11","changes":["GPS inicia automaticamente ao fazer check-in","Tecnico aparece no mapa em tempo real","GPS para automaticamente no check-out","Sem mais marcadores falsos no mapa"]}
+{"version":"2.4.9","notes":"Menu simplificado","date":"2026-03-11","changes":["Check-in e GPS removidos do menu lateral","Menu mais limpo e direto"]}

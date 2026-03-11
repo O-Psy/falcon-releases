@@ -677,12 +677,6 @@ function sbUpdateStatus(online) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>Ordens de Servi&#x00E7;o
         <span class="nb" id="nb-os" style="display:none">0</span>
       </div>
-      <div class="ni" onclick="go('checkin')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Check-in / Out
-      </div>
-      <div class="ni" id="ni-gps" onclick="go('gps')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>Rastreamento GPS
-      </div>
       <div class="ni" onclick="go('chat')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Chat Interno
         <span class="nb" id="nb-chat" style="display:none">0</span>
@@ -1414,7 +1408,7 @@ function toggleCI(){
     const li=document.createElement('div');li.className='ci-li';
     li.innerHTML=`<div class="ci-li-l"><span class="cin">\u25B2 CHECK-IN</span> \u00B7 ${CU.name}${os?' \u00B7 '+os:''}</div><div class="ci-dur">${t}</div>`;
     log.appendChild(li);log.scrollTop=log.scrollHeight;
-    addNtf(`${CU.name} fez check-in${os?' \u2013 '+os:''}`,'\u1F4CD');toast('\u2705 Check-in: '+t);refreshDash();startGpsTracking();
+    addNtf(`${CU.name} fez check-in${os?' \u2013 '+os:''}`,'\u1F4CD');toast('\u2705 Check-in: '+t);refreshDash();
   }else{
     ciOn=false;
     st.textContent='FORA';st.style.color='var(--red)';
@@ -1427,61 +1421,9 @@ function toggleCI(){
     const dur=calcDur(ciStart,t);
     li.innerHTML=`<div class="ci-li-l"><span class="cout">\u25BC CHECK-OUT</span> \u00B7 ${CU.name}${os?' \u00B7 '+os:''}</div><div class="ci-dur">${t} \u00B7 ${dur}</div>`;
     log.appendChild(li);log.scrollTop=log.scrollHeight;
-    addNtf(`${CU.name} fez check-out${dur?' ('+dur+')':''}`,'\u1F4CD');toast('\u2705 Check-out: '+t);refreshDash();stopGpsTracking();
+    addNtf(`${CU.name} fez check-out${dur?' ('+dur+')':''}`,'\u1F4CD');toast('\u2705 Check-out: '+t);refreshDash();
   }
 }
-// GPS AUTOMATICO
-var gpsWatchId=null;
-function startGpsTracking(){
-  if(!navigator.geolocation)return;
-  if(gpsWatchId!==null){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
-  navigator.geolocation.getCurrentPosition(function(p){
-    updateMyGpsPosition(p.coords.latitude,p.coords.longitude);
-  },function(){},
-  {enableHighAccuracy:true,timeout:10000,maximumAge:0});
-  gpsWatchId=navigator.geolocation.watchPosition(function(p){
-    updateMyGpsPosition(p.coords.latitude,p.coords.longitude);
-  },function(e){console.warn('GPS:',e.message);},
-  {enableHighAccuracy:true,timeout:15000,maximumAge:10000});
-}
-function stopGpsTracking(){
-  if(gpsWatchId!==null){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
-  if(myMk&&leafMap){try{leafMap.removeLayer(myMk);}catch(e){}myMk=null;}
-  GPS_T=GPS_T.filter(function(t){return t.id!==CU.id;});
-  if(typeof renderTList==='function')renderTList();
-}
-function updateMyGpsPosition(lat,lng){
-  if(!CU)return;
-  if(leafMap&&typeof L!=='undefined'){
-    if(!mapOk){try{initMap();}catch(e){}}
-    if(myMk){try{leafMap.removeLayer(myMk);}catch(e){}}
-    var ic=L.divIcon({className:'',
-      html:'<div style="width:44px;height:44px;border-radius:50%;background:'+CU.color
-        +';border:3px solid #fff;display:flex;align-items:center;justify-content:center;'
-        +'font-family:Bebas Neue,sans-serif;font-size:14px;color:#000;box-shadow:0 0 16px '
-        +CU.color+';cursor:pointer">'+CU.ini+'</div>',
-      iconSize:[44,44],iconAnchor:[22,22]});
-    myMk=L.marker([lat,lng],{icon:ic});
-    myMk.bindPopup('<div style="background:#1A1A1A;color:#F5F0E8;padding:10px">'
-      +'<b style="color:'+CU.color+'">'+CU.name+'</b><br>'
-      +'<small style="color:#aaa">Ao vivo \u00B7 GPS</small></div>');
-    myMk.addTo(leafMap);
-  }
-  var osEl=document.getElementById('ci-os');
-  var osVal=osEl?osEl.value||'Em campo':'Em campo';
-  var myT=GPS_T.find(function(t){return t.id===CU.id;});
-  if(myT){
-    myT.lat=lat;myT.lng=lng;myT.time=now5();
-    if(leafMap&&typeof addTMk==='function')addTMk(myT);
-  }else{
-    var nt={id:CU.id,name:CU.name,color:CU.color,ini:CU.ini,
-      lat:lat,lng:lng,os:osVal,time:now5(),active:true};
-    GPS_T.push(nt);
-    if(leafMap&&typeof addTMk==='function')addTMk(nt);
-  }
-  if(typeof renderTList==='function')renderTList();
-}
-
 // Renderizar historico do dia no checkin
 function renderCILog(){
   DB=loadDB();
@@ -1620,9 +1562,16 @@ function renderTList(){const el=document.getElementById('t-list');if(!el)return;
 function flyTo(id){const t=GPS_T.find(x=>x.id===id);if(!t||!leafMap)return;leafMap.flyTo([t.lat,t.lng],16,{duration:1.2});techMks[id]?.openPopup()}
 function getMyLoc(){
   if(!navigator.geolocation){toast('\u26A0\uFE0F GPS nao disponivel');return;}
+  toast('\uD83D\uDCE1 Obtendo localizacao...');
   navigator.geolocation.getCurrentPosition(function(p){
-    if(leafMap)leafMap.flyTo([p.coords.latitude,p.coords.longitude],17,{duration:1.2});
-    updateMyGpsPosition(p.coords.latitude,p.coords.longitude);
+    var la=p.coords.latitude,ln=p.coords.longitude;
+    if(myMk&&leafMap){try{leafMap.removeLayer(myMk);}catch(e){}}
+    if(typeof L==='undefined'){toast('\u26A0\uFE0F Mapa offline');return;}
+    var ic=L.divIcon({className:'',html:'<div style="width:44px;height:44px;border-radius:50%;background:#C9A84C;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 0 16px rgba(201,168,76,.7)">\uD83D\uDCCD</div>',iconSize:[44,44],iconAnchor:[22,22]});
+    myMk=L.marker([la,ln],{icon:ic}).addTo(leafMap);
+    myMk.bindPopup('<div style="background:#1A1A1A;color:#F5F0E8;padding:10px"><b style="color:#C9A84C">'+CU.name+'</b><br><small style="color:#888">Sua localizacao</small></div>').openPopup();
+    leafMap.flyTo([la,ln],16,{duration:1.4});
+    toast('\u2705 Localizacao obtida!');
   },function(){toast('\u274C Permissao negada');},{enableHighAccuracy:true,timeout:10000});
 }
 
