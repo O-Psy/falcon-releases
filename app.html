@@ -1206,11 +1206,12 @@ function go(id){
   document.getElementById('pg-'+id)?.classList.add('on');
   document.querySelectorAll('.ni').forEach(n=>{if(n.getAttribute('onclick')?.includes("'"+id+"'"))n.classList.add('on')});
   closeSb();closeNtf();
-  if(id==='gps'){setTimeout(initMap,80);setTimeout(renderTechList,200);}
-  if(id==='dashboard')refreshDash();
-  if(id==='ordens')renderOS();
-  if(id==='relatorios')renderRel();
-  if(id==='checkin'){renderCILog();updateCiOS();}
+  if(id==='dashboard'){refreshDash();}
+  if(id==='ordens'){renderOS();}
+  if(id==='relatorios'){renderRel();}
+  if(id==='chat'){buildChList();}
+  if(id==='usuarios'){renderUsr();}
+  if(id==='clientes'){renderCli();}
 }
 function toggleSb(){const s=document.getElementById('sb'),h=document.getElementById('hbg'),o=document.getElementById('sb-ov');s.classList.toggle('mob-open');h.classList.toggle('open');o.classList.toggle('on')}
 function closeSb(){document.getElementById('sb').classList.remove('mob-open');document.getElementById('hbg').classList.remove('open');document.getElementById('sb-ov').classList.remove('on')}
@@ -1279,6 +1280,11 @@ function refreshDash(){
     :'<div class="empty-s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg><div class="et">Sem ordens</div></div>';
   const dt=document.getElementById('dash-techs');
   const today=new Date().toDateString();
+  // Limpar entradas de dias anteriores do localStorage
+  if(DB.ciLog.some(l=>new Date(l.ts).toDateString()!==today)){
+    DB.ciLog=DB.ciLog.filter(l=>new Date(l.ts).toDateString()===today);
+    save();
+  }
   const active=DB.ciLog.filter(l=>{
     if(l.type!=='in')return false;
     if(new Date(l.ts).toDateString()!==today)return false;
