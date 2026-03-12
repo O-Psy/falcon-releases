@@ -707,7 +707,7 @@ function sbUpdateStatus(online) {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div class="tw"><div class="th2"><div class="tt">Ordens Recentes</div><button class="btn bo bsm" onclick="go('ordens')">Ver todas</button></div><div id="dash-os"></div></div>
-          <div class="bx-w"><div class="bx-t">&#x1F4CD; T&#x00E9;cnicos em Campo</div><div id="dash-techs"></div><button class="btn bo bsm" style="width:100%;justify-content:center;margin-top:12px" onclick="go('gps')">&#x1F5FA;&#xFE0F; Ver no Mapa</button></div>
+          <div class="bx-w"><div class="bx-t">&#x1F4CD; T&#x00E9;cnicos em Campo</div><div id="dash-techs"></div></div>
         </div>
       </div>
 
@@ -1183,7 +1183,6 @@ function startApp(){
   const isA=CU.role==='admin';
   document.getElementById('ni-usr').style.display=isA?'':'none';
   document.getElementById('ni-cli').style.display=isA?'':'none';
-  document.getElementById('ni-gps').style.display=(isA||CU.role==='monitor')?'':'none';
   if(isA)document.getElementById('btn-new-ch').style.display='';
   updateDate();startClock();refreshDash();renderOS();renderCli();renderUsr();renderRel();buildChList();updateCiOS();
   go('dashboard');

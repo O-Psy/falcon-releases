@@ -1,1 +1,11 @@
-{"version":"2.5.0","notes":"Revisao geral — tudo corrigido","date":"2026-03-11","changes":["Chat: canais aparecem corretamente ao abrir","Usuarios: lista carrega ao entrar na tela","Clientes: lista carrega ao entrar na tela","Dashboard: tecnicos em campo sem dados antigos","Menu: Check-in e GPS removidos","Update: aplica corretamente limpando cache"]}
+{
+  "version": "2.5.0",
+  "notes": "Sistema estabilizado para beta",
+  "changes": [
+    "Sistema de atualizacao corrigido — nao baixa mais a cada abertura",
+    "Verificacao de conexao antes de checar updates",
+    "Chat, Usuarios e Clientes agora carregam corretamente",
+    "Dashboard limpa tecnicos de dias anteriores automaticamente",
+    "Botao GPS removido do dashboard"
+  ]
+}
