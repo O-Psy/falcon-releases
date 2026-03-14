@@ -1,11 +1,1 @@
-{
-  "version": "2.5.0",
-  "notes": "Sistema estabilizado para beta",
-  "changes": [
-    "Sistema de atualizacao corrigido — nao baixa mais a cada abertura",
-    "Verificacao de conexao antes de checar updates",
-    "Chat, Usuarios e Clientes agora carregam corretamente",
-    "Dashboard limpa tecnicos de dias anteriores automaticamente",
-    "Botao GPS removido do dashboard"
-  ]
-}
+{"version":"2.5.1","notes":"Correcao critica: update loop infinito resolvido","date":"2026-03-14","changes":["Sistema de update reescrito — arquivos gravados em userData fora do ASAR","Primeira execucao: config.json copiado automaticamente para AppData","Sem mais loop de download ao iniciar o aplicativo","Chat, Usuarios e Clientes: listas carregam corretamente","Dashboard: tecnicos em campo sem dados de dias anteriores"]}

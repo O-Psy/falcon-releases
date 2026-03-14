@@ -432,8 +432,24 @@ tr:hover td{background:rgba(201,168,76,.025)}
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // SUPABASE \u2014 Banco de Dados Compartilhado
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+// ============ SEGURANCA: hash SHA-256 nativo ============
+async function hashPw(plain) {
+  var enc = new TextEncoder().encode(plain);
+  var buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
+}
+async function checkPw(plain, stored) {
+  if (!stored) return false;
+  if (stored.length === 64) { var h = await hashPw(plain); return h === stored; }
+  try { return atob(stored) === plain; } catch(e) { return false; }
+}
+// ============ SEGURANCA: sanitizacao XSS ================
+function esc(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+// ========================================================
 var SB_URL = window.__SB_URL__ || '';
 var SB_KEY = window.__SB_KEY__ || '';
+// Remover referencias da window apos captura
+try { delete window.__SB_URL__; delete window.__SB_KEY__; } catch(e) {}
 var SB_ONLINE = false;
 var sbRealtimeConn = null;
 
@@ -487,7 +503,7 @@ var SC = {
 
 // Mappers Supabase -> formato do app
 function sbMapUser(u) {
-  return { id: u.id, name: u.name, username: u.login, password: btoa(u.password),
+  return { id: u.id, name: u.name, username: u.login, password: u.password,
     role: u.role, color: u.color || '#C9A84C', ini: u.ini || 'US', active: u.active,
     cargo: u.role==='admin' ? 'Administrador' : u.role==='monitor' ? 'Monitor' : 'T\u00E9cnico',
     createdAt: u.created_at };
@@ -1088,7 +1104,7 @@ let DB=loadDB();
 // Ensure admin
 (function(){
   if(!DB.users.find(u=>u.role==='admin')){
-    DB.users.push({id:'u_admin',name:'Administrador',username:'admin',password:btoa('241096'),
+    DB.users.push({id:'u_admin',name:'Administrador',username:'admin',password:'2ae715d4b5c94f0991d52774fe99b3bf8b7305a9d98aafcf4292252a05fd0cb4',
       role:'admin',cargo:'Administrador do Sistema',color:'#C9A84C',ini:'AD',active:true,createdAt:new Date().toISOString()});
     save();
   }
@@ -1117,15 +1133,19 @@ function resetAtt(u){const a=S.get('att')||{};delete a[u];S.set('att',a)}
 function isLocked(u){const x=getAtt(u);if(!x.at)return false;if(Date.now()-x.at>LOCK_MS){resetAtt(u);return false}return true}
 function lockMin(u){const x=getAtt(u);if(!x.at)return 0;return Math.ceil((LOCK_MS-(Date.now()-x.at))/60000)}
 
-function doLogin(){
+async function doLogin(){
   const un=document.getElementById('lu').value.trim().toLowerCase();
   const pw=document.getElementById('lp').value;
   const e=document.getElementById('lerr'),lk=document.getElementById('lock-msg');
   e.style.display='none';lk.style.display='none';
   if(!un||!pw){showErr('Preencha usu\u00E1rio e senha.');return}
   if(isLocked(un)){lk.textContent='Conta bloqueada. Tente em '+lockMin(un)+' minuto(s).';lk.style.display='block';return}
-  // Tentar login local primeiro (cache)
-  const user=DB.users.find(u=>u.username&&u.username.toLowerCase()===un&&atob(u.password)===pw&&u.active);
+  // Tentar login local primeiro (cache) - usa checkPw que suporta SHA-256 e legado btoa
+  const candidates=DB.users.filter(u=>u.username&&u.username.toLowerCase()===un&&u.active);
+  let user=null;
+  for(var i=0;i<candidates.length;i++){
+    if(await checkPw(pw,candidates[i].password)){user=candidates[i];break;}
+  }
   if(!user){
     recAtt(un);
     const rem=MAX_ATT-getAtt(un).n;
@@ -1231,7 +1251,7 @@ function addNtf(msg,ic='\u1F514'){
 function renderNtf(){
   const l=document.getElementById('ntf-list');
   if(!DB.notifs.length){l.innerHTML='<div style="padding:20px;text-align:center;color:var(--gray);font-size:12px">Sem notifica\u00E7\u00F5es</div>';return}
-  l.innerHTML=DB.notifs.slice(0,12).map(n=>`<div class="ntf-item"><div class="ntf-ic">${n.ic}</div><div><div class="ntf-txt">${n.msg}</div><div class="ntf-ts">${fmt(n.ts)}</div></div></div>`).join('');
+  l.innerHTML=DB.notifs.slice(0,12).map(n=>`<div class="ntf-item"><div class="ntf-ic">${esc(n.ic)}</div><div><div class="ntf-txt">${esc(n.msg)}</div><div class="ntf-ts">${fmt(n.ts)}</div></div></div>`).join('');
 }
 function toggleNtf(){document.getElementById('ntf-panel').classList.toggle('on')}
 function closeNtf(){document.getElementById('ntf-panel').classList.remove('on')}
@@ -1275,7 +1295,7 @@ function refreshDash(){
   document.getElementById('d-urg').textContent=os.filter(o=>o.priority==='urgente'&&o.status!=='concluida').length;
   const dol=document.getElementById('dash-os');
   const rec=os.slice(-5).reverse();
-  dol.innerHTML=rec.length?`<table><thead><tr><th>OS</th><th>Cliente</th><th>Status</th></tr></thead><tbody>${rec.map(o=>`<tr><td style="font-weight:700;color:var(--gold)">#${o.num}</td><td>${o.clientName}</td><td>${bdgOS(o.status)}</td></tr>`).join('')}</tbody></table>`
+  dol.innerHTML=rec.length?`<table><thead><tr><th>OS</th><th>Cliente</th><th>Status</th></tr></thead><tbody>${rec.map(o=>`<tr><td style="font-weight:700;color:var(--gold)">#${o.num}</td><td>${esc(o.clientName)}</td><td>${bdgOS(o.status)}</td></tr>`).join('')}</tbody></table>`
     :'<div class="empty-s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg><div class="et">Sem ordens</div></div>';
   const dt=document.getElementById('dash-techs');
   const today=new Date().toDateString();
@@ -1290,7 +1310,7 @@ function refreshDash(){
     return!DB.ciLog.find(x=>x.userId===l.userId&&x.type==='out'&&x.ts>l.ts);
   });
   dt.innerHTML=active.length?active.map(l=>{const u=DB.users.find(x=>x.id===l.userId);if(!u)return'';
-    return`<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--d3);margin-bottom:7px"><div class="av" style="width:30px;height:30px;font-size:12px;background:${u.color}">${u.ini}</div><div style="flex:1"><div style="font-size:13px;font-weight:600">${u.name}</div><div style="font-size:11px;color:var(--gray)">${l.os||'Sem OS'} \u00B7 desde ${l.time}</div></div><span class="bx bd">Ativo</span></div>`;
+    return`<div style="display:flex;align-items:center;gap:10px;padding:9px;background:var(--d3);margin-bottom:7px"><div class="av" style="width:30px;height:30px;font-size:12px;background:${esc(u.color)}">${esc(u.ini)}</div><div style="flex:1"><div style="font-size:13px;font-weight:600">${esc(u.name)}</div><div style="font-size:11px;color:var(--gray)">${esc(l.os||'Sem OS')} \u00B7 desde ${l.time}</div></div><span class="bx bd">Ativo</span></div>`;
   }).join(''):'<div style="padding:16px 0;text-align:center;color:var(--gray);font-size:12px">Nenhum t\u00E9cnico em campo agora</div>';
   const pend=os.filter(o=>o.status==='pendente').length;
   const nb=document.getElementById('nb-os');
@@ -1312,8 +1332,8 @@ function renderOS(){
   const w=document.getElementById('os-body'),a=CU&&CU.role==='admin';
   if(!all.length){w.innerHTML='<div class="empty-s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg><div class="et">Nenhuma OS</div><div class="ed">Crie uma nova ordem de servi\u00E7o</div></div>';return}
   w.innerHTML=`<table><thead><tr><th>OS</th><th>Cliente</th><th>Servi\u00E7o</th><th>T\u00E9cnico</th><th>Data</th><th>Prior.</th><th>Status</th><th>A\u00E7\u00F5es</th></tr></thead><tbody>${all.map(o=>`<tr>
-    <td style="font-weight:700;color:var(--gold)">#${o.num}</td><td>${o.clientName}</td>
-    <td style="font-size:12px">${o.type}</td><td style="font-size:12px">${o.techName||'<span style="color:var(--gray)">\u2014</span>'}</td>
+    <td style="font-weight:700;color:var(--gold)">#${o.num}</td><td>${esc(o.clientName)}</td>
+    <td style="font-size:12px">${esc(o.type)}</td><td style="font-size:12px">${o.techName?esc(o.techName):'<span style="color:var(--gray)">\u2014</span>'}</td>
     <td style="font-size:11px;color:var(--gray)">${o.date||'\u2014'}</td>
     <td><span class="pri ${PM[o.priority]}">${PL[o.priority]}</span></td>
     <td>${bdgOS(o.status)}</td>
@@ -1348,12 +1368,12 @@ function viewOS(id){
   const a=CU.role==='admin';
   document.getElementById('m-det-t').textContent=`OS #${o.num} \u2014 ${o.clientName}`;
   document.getElementById('m-det-b').innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">${[['Cliente',o.clientName],['Servi\u00E7o',o.type],['T\u00E9cnico',o.techName||'\u2014'],['Data',(o.date||'\u2014')+' '+(o.time||'')],['Endere\u00E7o',o.address||'\u2014'],['Prioridade',PL[o.priority]]].map(([l,v])=>`<div><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:3px">${l}</div><div style="font-size:13px;font-weight:600">${v}</div></div>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">${[['Cliente',esc(o.clientName)],['Servi\u00E7o',esc(o.type)],['T\u00E9cnico',esc(o.techName||'\u2014')],['Data',(o.date||'\u2014')+' '+(o.time||'')],['Endere\u00E7o',esc(o.address||'\u2014')],['Prioridade',PL[o.priority]]].map(([l,v])=>`<div><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:3px">${l}</div><div style="font-size:13px;font-weight:600">${v}</div></div>`).join('')}</div>
     <div style="margin-bottom:14px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">Status Atual</div>${bdgOS(o.status)}</div>
-    ${o.desc?`<div style="margin-bottom:14px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">Descri\u00E7\u00E3o</div><div style="font-size:13px;color:var(--gray);line-height:1.6">${o.desc}</div></div>`:''}
+    ${o.desc?`<div style="margin-bottom:14px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">Descri\u00E7\u00E3o</div><div style="font-size:13px;color:var(--gray);line-height:1.6">${esc(o.desc)}</div></div>`:''}
     ${a?`<div class="fg" style="margin-bottom:12px"><label>Alterar Status</label><select id="det-st" style="background:var(--d3);border:1px solid rgba(201,168,76,.12);color:var(--white);padding:9px 12px;width:100%;outline:none;font-family:Barlow,sans-serif;-webkit-appearance:none"><option value="pendente" ${o.status==='pendente'?'selected':''}>Pendente</option><option value="andamento" ${o.status==='andamento'?'selected':''}>Em Andamento</option><option value="urgente" ${o.status==='urgente'?'selected':''}>Urgente</option><option value="concluida" ${o.status==='concluida'?'selected':''}>Conclu\u00EDda</option></select></div>
     <div class="fg"><label>Observa\u00E7\u00E3o</label><textarea id="det-obs" style="background:var(--d3);border:1px solid rgba(201,168,76,.12);color:var(--white);padding:9px 12px;width:100%;outline:none;font-family:Barlow,sans-serif;resize:vertical;min-height:70px" placeholder="Adicione observa\u00E7\u00F5es..."></textarea></div>`:'<div style="font-size:12px;color:var(--gray2);margin-top:8px">Somente administradores alteram o status.</div>'}
-    ${o.obs?.length?`<div style="margin-top:14px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:7px">Hist\u00F3rico</div>${o.obs.map(x=>`<div style="background:var(--d3);padding:8px 12px;margin-bottom:4px;font-size:12px;border-left:2px solid rgba(201,168,76,.2)"><div style="color:var(--gold);font-size:10px;margin-bottom:2px">${x.user} \u00B7 ${fmt(x.ts)}</div>${x.txt}</div>`).join('')}</div>`:''}`;
+    ${o.obs?.length?`<div style="margin-top:14px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:7px">Hist\u00F3rico</div>${o.obs.map(x=>`<div style="background:var(--d3);padding:8px 12px;margin-bottom:4px;font-size:12px;border-left:2px solid rgba(201,168,76,.2)"><div style="color:var(--gold);font-size:10px;margin-bottom:2px">${esc(x.user)} \u00B7 ${fmt(x.ts)}</div>${esc(x.txt)}</div>`).join('')}</div>`:''}`;
   document.getElementById('m-det-f').innerHTML=a
     ?`<button class="btn bo" onclick="closeM('m-os-det')">Fechar</button>
        <button class="btn bo" onclick="printOS('${id}')" style="gap:6px">
@@ -1393,12 +1413,12 @@ function delOS(id){
 }
 function populateOS(){
   DB=loadDB();
-  const cs=document.getElementById('os-cli');if(cs){cs.innerHTML='<option value="">Selecione</option>'+DB.clients.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
-  const ts2=document.getElementById('os-tec');if(ts2){ts2.innerHTML='<option value="">Sem t\u00E9cnico</option>'+DB.users.filter(u=>u.active&&u.role!=='admin').map(u=>`<option value="${u.id}">${u.name}</option>`).join('')}
+  const cs=document.getElementById('os-cli');if(cs){cs.innerHTML='<option value="">Selecione</option>'+DB.clients.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+  const ts2=document.getElementById('os-tec');if(ts2){ts2.innerHTML='<option value="">Sem t\u00E9cnico</option>'+DB.users.filter(u=>u.active&&u.role!=='admin').map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}
 }
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 CHECK-IN \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-function updateCiOS(){DB=loadDB();const s=document.getElementById('ci-os');if(!s)return;s.innerHTML='<option value="">\u2014 Selecione \u2014</option>'+DB.orders.filter(o=>o.status!=='concluida').map(o=>`<option>${`OS #${o.num} \u2013 ${o.clientName}`}</option>`).join('')}
+function updateCiOS(){DB=loadDB();const s=document.getElementById('ci-os');if(!s)return;s.innerHTML='<option value="">\u2014 Selecione \u2014</option>'+DB.orders.filter(o=>o.status!=='concluida').map(o=>`<option>${`OS #${o.num} \u2013 ${esc(o.clientName)}`}</option>`).join('')}
 function toggleCI(){
   const btn=document.getElementById('ci-btn'),st=document.getElementById('ci-st'),info=document.getElementById('ci-info'),log=document.getElementById('ci-log');
   const t=now5(),os=document.getElementById('ci-os').value;
@@ -1411,7 +1431,7 @@ function toggleCI(){
     if(SB_ONLINE)sbInsert('checkin_log',{id:r.id,log_type:'in',user_id:r.userId,user_name:r.userName,os:r.os||null,time_ci:r.time});
     if(log.querySelector('div[style]'))log.innerHTML='';
     const li=document.createElement('div');li.className='ci-li';
-    li.innerHTML=`<div class="ci-li-l"><span class="cin">\u25B2 CHECK-IN</span> \u00B7 ${CU.name}${os?' \u00B7 '+os:''}</div><div class="ci-dur">${t}</div>`;
+    li.innerHTML=`<div class="ci-li-l"><span class="cin">\u25B2 CHECK-IN</span> \u00B7 ${esc(CU.name)}${os?' \u00B7 '+esc(os):''}</div><div class="ci-dur">${t}</div>`;
     log.appendChild(li);log.scrollTop=log.scrollHeight;
     addNtf(`${CU.name} fez check-in${os?' \u2013 '+os:''}`,'\u1F4CD');toast('\u2705 Check-in: '+t);refreshDash();
   }else{
@@ -1424,7 +1444,7 @@ function toggleCI(){
     if(SB_ONLINE)sbInsert('checkin_log',{id:r.id,log_type:'out',user_id:r.userId,user_name:r.userName,os:r.os||null,time_ci:r.time});
     const li=document.createElement('div');li.className='ci-li';
     const dur=calcDur(ciStart,t);
-    li.innerHTML=`<div class="ci-li-l"><span class="cout">\u25BC CHECK-OUT</span> \u00B7 ${CU.name}${os?' \u00B7 '+os:''}</div><div class="ci-dur">${t} \u00B7 ${dur}</div>`;
+    li.innerHTML=`<div class="ci-li-l"><span class="cout">\u25BC CHECK-OUT</span> \u00B7 ${esc(CU.name)}${os?' \u00B7 '+esc(os):''}</div><div class="ci-dur">${t} \u00B7 ${dur}</div>`;
     log.appendChild(li);log.scrollTop=log.scrollHeight;
     addNtf(`${CU.name} fez check-out${dur?' ('+dur+')':''}`,'\u1F4CD');toast('\u2705 Check-out: '+t);refreshDash();
   }
@@ -1447,8 +1467,8 @@ function renderCILog(){
     const out=!isIn&&recs.find(function(x){return x.userId===r.userId&&x.type==='in'&&x.ts<r.ts;});
     const dur=(!isIn&&out)?calcDur(out.time,r.time):'';
     li.innerHTML=(isIn
-      ?'<div class="ci-li-l"><span class="cin">\u25B2 CHECK-IN</span> \u00B7 '+r.userName+(r.os?' \u00B7 '+r.os:'')+'</div><div class="ci-dur">'+r.time+'</div>'
-      :'<div class="ci-li-l"><span class="cout">\u25BC CHECK-OUT</span> \u00B7 '+r.userName+(r.os?' \u00B7 '+r.os:'')+'</div><div class="ci-dur">'+r.time+(dur?' \u00B7 '+dur:'')+'</div>');
+      ?'<div class="ci-li-l"><span class="cin">\u25B2 CHECK-IN</span> \u00B7 '+esc(r.userName)+(r.os?' \u00B7 '+esc(r.os):'')+'</div><div class="ci-dur">'+r.time+'</div>'
+      :'<div class="ci-li-l"><span class="cout">\u25BC CHECK-OUT</span> \u00B7 '+esc(r.userName)+(r.os?' \u00B7 '+esc(r.os):'')+'</div><div class="ci-dur">'+r.time+(dur?' \u00B7 '+dur:'')+'</div>');
     log.appendChild(li);
   });
   log.scrollTop=log.scrollHeight;
@@ -1563,7 +1583,7 @@ function addTMk(t){
   m.bindPopup(popup,{maxWidth:200,className:''});
   m.addTo(leafMap);techMks[t.id]=m;
 }
-function renderTList(){const el=document.getElementById('t-list');if(!el)return;if(!GPS_T.length){el.innerHTML='<div style="padding:18px;text-align:center;color:var(--gray);font-size:12px">Nenhum t\u00E9cnico</div>';return}el.innerHTML=GPS_T.map(t=>`<div class="ti" onclick="flyTo('${t.id}')"><div class="tdot" style="background:${t.color}"></div><div><div style="font-size:12.5px;font-weight:700">${t.name}</div><div style="font-size:11px;color:var(--gray)">${t.os}</div><div style="font-size:10px;color:var(--gold);margin-top:2px">\u1F550 ${t.time}</div></div></div>`).join('')}
+function renderTList(){const el=document.getElementById('t-list');if(!el)return;if(!GPS_T.length){el.innerHTML='<div style="padding:18px;text-align:center;color:var(--gray);font-size:12px">Nenhum t\u00E9cnico</div>';return}el.innerHTML=GPS_T.map(t=>`<div class="ti" onclick="flyTo('${t.id}')"><div class="tdot" style="background:${esc(t.color)}"></div><div><div style="font-size:12.5px;font-weight:700">${esc(t.name)}</div><div style="font-size:11px;color:var(--gray)">${esc(t.os)}</div><div style="font-size:10px;color:var(--gold);margin-top:2px">\u1F550 ${t.time}</div></div></div>`).join('')}
 function flyTo(id){const t=GPS_T.find(x=>x.id===id);if(!t||!leafMap)return;leafMap.flyTo([t.lat,t.lng],16,{duration:1.2});techMks[id]?.openPopup()}
 function getMyLoc(){
   if(!navigator.geolocation){toast('\u26A0\uFE0F GPS nao disponivel');return;}
@@ -1631,7 +1651,7 @@ function _renderChMsgsLocal(){
   const el=document.getElementById('ch-body');
   el.className='ch-msgs';el.removeAttribute('style');
   if(!msgs.length){el.innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:13px;flex-direction:column;gap:8px"><div style="font-size:24px">'+(curCh.icon||'\u1F4AC')+'</div>Nenhuma mensagem. Seja o primeiro a escrever!</div>';return}
-  el.innerHTML=msgs.map(m=>{const mine=m.uid===CU.id;return`<div class="msg ${mine?'me':''}"><div class="av" style="width:26px;height:26px;font-size:10px;background:${m.clr||'var(--gray2)'}">${m.ini||'?'}</div><div><div class="msg-bbl">${m.text}</div><div class="msg-t">${m.nm} \u00B7 ${fmt(m.ts).slice(11,16)}</div></div></div>`}).join('');
+  el.innerHTML=msgs.map(m=>{const mine=m.uid===CU.id;return`<div class="msg ${mine?'me':''}"><div class="av" style="width:26px;height:26px;font-size:10px;background:${esc(m.clr)||'var(--gray2)'}">${esc(m.ini)||'?'}</div><div><div class="msg-bbl">${esc(m.text)}</div><div class="msg-t">${esc(m.nm)} \u00B7 ${fmt(m.ts).slice(11,16)}</div></div></div>`}).join('');
   el.scrollTop=el.scrollHeight;
 }
 function sendMsg(){
@@ -1649,7 +1669,7 @@ function sendMsg(){
 function toggleMemberSelect(){
   const v=document.getElementById('ch-vis').value;
   document.getElementById('ch-members-wrap').style.display=v==='custom'?'':'none';
-  if(v==='custom'){DB=loadDB();document.getElementById('ch-members-list').innerHTML=DB.users.filter(u=>u.id!==CU.id&&u.active).map(u=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" class="ch-mb" value="${u.id}" style="accent-color:var(--gold)"><div class="av" style="width:24px;height:24px;font-size:10px;background:${u.color}">${u.ini}</div>${u.name} <span style="font-size:10px;color:var(--gray)">${RL[u.role]}</span></label>`).join('')}
+  if(v==='custom'){DB=loadDB();document.getElementById('ch-members-list').innerHTML=DB.users.filter(u=>u.id!==CU.id&&u.active).map(u=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" class="ch-mb" value="${u.id}" style="accent-color:var(--gold)"><div class="av" style="width:24px;height:24px;font-size:10px;background:${esc(u.color)}">${esc(u.ini)}</div>${esc(u.name)} <span style="font-size:10px;color:var(--gray)">${RL[u.role]}</span></label>`).join('')}
 }
 function saveCh(){
   const nm=document.getElementById('ch-name').value.trim();if(!nm){toast('\u26A0\uFE0F Nome obrigat\u00F3rio');return}
@@ -1664,39 +1684,41 @@ function editCh(id){DB=loadDB();const c=DB.channels.find(x=>x.id===id);if(!c)ret
 function delCh(id){confirm2('Excluir Canal','Excluir este canal e todas as mensagens?',()=>{DB.channels=DB.channels.filter(x=>x.id!==id);delete DB.msgs[id];save();if(curCh?.id===id){curCh=null;document.getElementById('ch-body').innerHTML='<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--gray);font-size:13px">Selecione um canal</div>';document.getElementById('ch-inp-area').style.display='none'}buildChList();toast('\u1F5D1\uFE0F Canal exclu\u00EDdo')})}
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 REPORTS \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-function renderRel(){DB=loadDB();const g=document.getElementById('rel-grid');if(!DB.reports.length){g.innerHTML='<div class="empty-s" style="grid-column:1/-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg><div class="et">Sem relat\u00F3rios</div><div class="ed">Crie o primeiro</div></div>';return}g.innerHTML=DB.reports.map(r=>`<div class="rc"><div class="ri">${r.type==='Ocorr\u00EAncia'?'\u26A0\uFE0F':'\u1F4F7'}</div><div class="rn">${r.title}</div><div class="rm"><span>\u1F4C5 ${fmtD(r.createdAt)}</span><span>\u1F464 ${r.author}</span><span class="bx ${r.type==='Ocorr\u00EAncia'?'bu':'bd'}" style="padding:1px 7px">${r.type}</span></div><p style="font-size:12px;color:var(--gray);margin-top:8px;line-height:1.6">${r.desc.slice(0,110)}${r.desc.length>110?'...':''}</p>${CU.role==='admin'?`<button class="btn br bsm" style="margin-top:10px" onclick="delRel('${r.id}')">Excluir</button>`:''}</div>`).join('')}
+function renderRel(){DB=loadDB();const g=document.getElementById('rel-grid');if(!DB.reports.length){g.innerHTML='<div class="empty-s" style="grid-column:1/-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/></svg><div class="et">Sem relat\u00F3rios</div><div class="ed">Crie o primeiro</div></div>';return}g.innerHTML=DB.reports.map(r=>`<div class="rc"><div class="ri">${r.type==='Ocorr\u00EAncia'?'\u26A0\uFE0F':'\u1F4F7'}</div><div class="rn">${esc(r.title)}</div><div class="rm"><span>\u1F4C5 ${fmtD(r.createdAt)}</span><span>\u1F464 ${esc(r.author)}</span><span class="bx ${r.type==='Ocorr\u00EAncia'?'bu':'bd'}" style="padding:1px 7px">${esc(r.type)}</span></div><p style="font-size:12px;color:var(--gray);margin-top:8px;line-height:1.6">${esc(r.desc).slice(0,110)}${r.desc.length>110?'...':''}</p>${CU.role==='admin'?`<button class="btn br bsm" style="margin-top:10px" onclick="delRel('${r.id}')">Excluir</button>`:''}</div>`).join('')}
 function saveRel(){const tit=document.getElementById('rel-tit').value.trim(),desc=document.getElementById('rel-desc').value.trim();if(!tit||!desc){toast('\u26A0\uFE0F T\u00EDtulo e descri\u00E7\u00E3o obrigat\u00F3rios');return}DB=loadDB();DB.reports.push({id:uid(),title:tit,desc,type:document.getElementById('rel-tipo').value,osId:document.getElementById('rel-os').value,author:CU.name,userId:CU.id,createdAt:ts()});save();closeM('m-rel');document.getElementById('rel-tit').value='';document.getElementById('rel-desc').value='';renderRel();addNtf(`Novo relat\u00F3rio: ${tit}`,'\u1F4CB');toast('\u2705 Relat\u00F3rio salvo!')}
 function delRel(id){confirm2('Excluir Relat\u00F3rio','Excluir este relat\u00F3rio?',()=>{DB.reports=DB.reports.filter(x=>x.id!==id);save();renderRel();toast('\u1F5D1\uFE0F Exclu\u00EDdo')})}
-function popRelOS(){DB=loadDB();const s=document.getElementById('rel-os');if(!s)return;s.innerHTML='<option value="">\u2014 Nenhuma \u2014</option>'+DB.orders.map(o=>`<option value="${o.id}">OS #${o.num} \u2013 ${o.clientName}</option>`).join('')}
+function popRelOS(){DB=loadDB();const s=document.getElementById('rel-os');if(!s)return;s.innerHTML='<option value="">\u2014 Nenhuma \u2014</option>'+DB.orders.map(o=>`<option value="${o.id}">OS #${o.num} \u2013 ${esc(o.clientName)}</option>`).join('')}
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 USERS \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 function renderUsr(){
   DB=loadDB();document.getElementById('usr-lbl').textContent=`${DB.users.length} usu\u00E1rio(s)`;
   const w=document.getElementById('usr-list');
   if(!DB.users.length){w.innerHTML='<div class="empty-s"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg><div class="et">Sem usu\u00E1rios</div></div>';return}
-  w.innerHTML=DB.users.map(u=>`<div class="up"><div class="av" style="width:40px;height:40px;font-size:16px;background:${u.color}">${u.ini}</div><div class="up-info"><div class="up-nm">${u.name}</div><div class="up-un">@${u.username} \u00B7 ${u.cargo||RL[u.role]} \u00B7 <span class="bx ${u.role==='admin'?'b-ad':u.role==='monitor'?'b-mo':'b-tc'}">${RL[u.role]}</span></div></div><div class="up-acts"><span class="bx ${u.active?'bd':'bp'}">${u.active?'Ativo':'Inativo'}</span>${u.id!==CU.id?`<button class="btn bo bsm" onclick="editUsr('${u.id}')">Editar</button><button class="btn bo bsm" onclick="toggleUsr('${u.id}')">${u.active?'Desativar':'Ativar'}</button><button class="btn br bsm" onclick="delUsr('${u.id}')">Del</button>`:'<span style="font-size:11px;color:var(--gray)">Voc\u00EA</span>'}</div></div>`).join('');
+  w.innerHTML=DB.users.map(u=>`<div class="up"><div class="av" style="width:40px;height:40px;font-size:16px;background:${esc(u.color)}">${esc(u.ini)}</div><div class="up-info"><div class="up-nm">${esc(u.name)}</div><div class="up-un">@${esc(u.username)} \u00B7 ${esc(u.cargo||RL[u.role])} \u00B7 <span class="bx ${u.role==='admin'?'b-ad':u.role==='monitor'?'b-mo':'b-tc'}">${RL[u.role]}</span></div></div><div class="up-acts"><span class="bx ${u.active?'bd':'bp'}">${u.active?'Ativo':'Inativo'}</span>${u.id!==CU.id?`<button class="btn bo bsm" onclick="editUsr('${u.id}')">Editar</button><button class="btn bo bsm" onclick="toggleUsr('${u.id}')">${u.active?'Desativar':'Ativar'}</button><button class="btn br bsm" onclick="delUsr('${u.id}')">Del</button>`:'<span style="font-size:11px;color:var(--gray)">Voc\u00EA</span>'}</div></div>`).join('');
 }
 function openNewUsr(){editUsrId=null;document.getElementById('m-usr-t').textContent='Novo Usu\u00E1rio';document.getElementById('u-btn').textContent='Cadastrar';['u-nm','u-doc','u-cargo','u-tel','u-un','u-pw'].forEach(i=>{const e=document.getElementById(i);if(e){e.value='';e.placeholder=i==='u-pw'?'M\u00EDnimo 6 caracteres':e.placeholder}});document.getElementById('u-role').value='tech';openM('m-usr')}
 function saveUsr(){
   DB=loadDB();const nm=document.getElementById('u-nm').value.trim(),un=document.getElementById('u-un').value.trim().toLowerCase(),pw=document.getElementById('u-pw').value,role=document.getElementById('u-role').value;
   if(!nm||!un){toast('\u26A0\uFE0F Nome e usu\u00E1rio obrigat\u00F3rios');return}
   if(!editUsrId&&(!pw||pw.length<6)){toast('\u26A0\uFE0F Senha m\u00EDnima 6 caracteres');return}
+  (async()=>{
   if(editUsrId){
     const u=DB.users.find(x=>x.id===editUsrId);if(!u)return;
     if(DB.users.find(x=>x.username===un&&x.id!==editUsrId)){toast('\u26A0\uFE0F Usu\u00E1rio j\u00E1 existe');return}
-    u.name=nm;u.username=un;u.role=role;u.cargo=document.getElementById('u-cargo').value.trim();u.tel=document.getElementById('u-tel').value.trim();u.doc=document.getElementById('u-doc').value.trim();u.ini=ini(nm);u.color=RC[role];if(pw&&pw.length>=6)u.password=btoa(pw);
+    u.name=nm;u.username=un;u.role=role;u.cargo=document.getElementById('u-cargo').value.trim();u.tel=document.getElementById('u-tel').value.trim();u.doc=document.getElementById('u-doc').value.trim();u.ini=ini(nm);u.color=RC[role];
+    if(pw&&pw.length>=6)u.password=await hashPw(pw);
+    save();
+    if(SB_ONLINE)sbUpsert('usuarios',{id:u.id,name:u.name,login:u.username,password:u.password,role:u.role,color:u.color,ini:u.ini,active:u.active});
     toast('\u2705 Atualizado!');addNtf(`Usu\u00E1rio ${nm} atualizado`,'\u1F464');
   }else{
     if(DB.users.find(x=>x.username===un)){toast('\u26A0\uFE0F Usu\u00E1rio j\u00E1 existe');return}
-    DB.users.push({id:uid(),name:nm,username:un,password:btoa(pw),role,cargo:document.getElementById('u-cargo').value.trim(),tel:document.getElementById('u-tel').value.trim(),doc:document.getElementById('u-doc').value.trim(),color:RC[role],ini:ini(nm),active:true,createdAt:ts()});
+    var _h=await hashPw(pw);
+    DB.users.push({id:uid(),name:nm,username:un,password:_h,role,cargo:document.getElementById('u-cargo').value.trim(),tel:document.getElementById('u-tel').value.trim(),doc:document.getElementById('u-doc').value.trim(),color:RC[role],ini:ini(nm),active:true,createdAt:ts()});
+    save();if(SB_ONLINE){DB=loadDB();var _u=DB.users[DB.users.length-1];if(_u)sbUpsert('usuarios',{id:_u.id,name:_u.name,login:_u.username,password:_u.password,role:_u.role,color:_u.color,ini:_u.ini,active:_u.active});}
     toast('\u2705 Usu\u00E1rio criado!');addNtf(`Novo usu\u00E1rio: ${nm}`,'\u1F464');
   }
-  save();
-  if(SB_ONLINE){
-    DB=loadDB();const u=DB.users[DB.users.length-1];
-    if(u) sbUpsert('usuarios',{id:u.id,name:u.name,login:u.username,password:atob(u.password),role:u.role,color:u.color,ini:u.ini,active:u.active});
-  }
   closeM('m-usr');renderUsr();buildChList();editUsrId=null;
+  })();
 }
 function editUsr(id){DB=loadDB();const u=DB.users.find(x=>x.id===id);if(!u)return;editUsrId=id;document.getElementById('m-usr-t').textContent='Editar Usu\u00E1rio';document.getElementById('u-btn').textContent='Salvar';document.getElementById('u-nm').value=u.name;document.getElementById('u-un').value=u.username;document.getElementById('u-role').value=u.role;document.getElementById('u-cargo').value=u.cargo||'';document.getElementById('u-tel').value=u.tel||'';document.getElementById('u-doc').value=u.doc||'';document.getElementById('u-pw').value='';document.getElementById('u-pw').placeholder='Em branco = n\u00E3o alterar';openM('m-usr')}
 function toggleUsr(id){DB=loadDB();const u=DB.users.find(x=>x.id===id);if(!u||u.id===CU.id)return;confirm2(u.active?'Desativar':'Ativar',`${u.active?'Desativar':'Ativar'} ${u.name}?`,()=>{u.active=!u.active;save();renderUsr();toast(`\u2705 ${u.name} ${u.active?'ativado':'desativado'}`)})}
@@ -1716,24 +1738,24 @@ function renderCli(){
     return`<div class="cli-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">
         <div>
-          <div class="cli-nm">${c.name}</div>
-          ${c.contrato?`<div style="font-size:10px;color:var(--gold);margin-top:2px;letter-spacing:.5px">\u1F4C4 ${c.contrato}</div>`:''}
+          <div class="cli-nm">${esc(c.name)}</div>
+          ${c.contrato?`<div style="font-size:10px;color:var(--gold);margin-top:2px;letter-spacing:.5px">\u1F4C4 ${esc(c.contrato)}</div>`:''}
         </div>
-        <span class="cli-badge ${c.tipo==='Comercial'?'cli-com':'cli-res'}">${c.tipo||'Res.'}</span>
+        <span class="cli-badge ${c.tipo==='Comercial'?'cli-com':'cli-res'}">${esc(c.tipo||'Res.')}</span>
       </div>
       <div class="cli-meta">
-        ${c.tel?`<span>\u1F4DE ${c.tel}</span>`:''}
-        ${c.email?`<span>\u2709\uFE0F ${c.email}</span>`:''}
-        ${addr?`<span>\u1F4CD ${addr}</span>`:''}
+        ${c.tel?`<span>\u1F4DE ${esc(c.tel)}</span>`:''}
+        ${c.email?`<span>\u2709\uFE0F ${esc(c.email)}</span>`:''}
+        ${addr?`<span>\u1F4CD ${esc(addr)}</span>`:''}
         ${ctTotal?`<span style="color:var(--gold)">\u1F465 +${ctTotal} contato(s)</span>`:''}
-        ${c.equip?`<span>\u1F527 ${c.equip.slice(0,30)}${c.equip.length>30?'...':''}</span>`:''}
+        ${c.equip?`<span>\u1F527 ${esc(c.equip).slice(0,30)}${c.equip.length>30?'...':''}</span>`:''}
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px">
-        <span class="bx ${c.status==='Ativo'?'bd':c.status==='Inativo'?'bu':'bp'}">${c.status}</span>
-        <span style="font-size:11px;color:var(--gray)">${c.plano||''}</span>
+        <span class="bx ${c.status==='Ativo'?'bd':c.status==='Inativo'?'bu':'bp'}">${esc(c.status)}</span>
+        <span style="font-size:11px;color:var(--gray)">${esc(c.plano||'')}</span>
         ${c.revisao?`<span style="font-size:10px;color:${revisaoAlert?'#E74C3C':'var(--gray2)'}">${revisaoAlert}Rev: ${fmtD(c.revisao)}</span>`:''}
       </div>
-      ${c.obs?`<div style="font-size:11px;color:var(--gray2);margin-top:8px;padding-top:8px;border-top:1px solid rgba(201,168,76,.07);line-height:1.5;font-style:italic">\u1F4AC ${c.obs.slice(0,90)}${c.obs.length>90?'...':''}</div>`:''}
+      ${c.obs?`<div style="font-size:11px;color:var(--gray2);margin-top:8px;padding-top:8px;border-top:1px solid rgba(201,168,76,.07);line-height:1.5;font-style:italic">\u1F4AC ${esc(c.obs).slice(0,90)}${c.obs.length>90?'...':''}</div>`:''}
       <div class="cli-acts">
         <button class="btn bo bsm" onclick="viewCli('${c.id}')">\u1F441 Ver</button>
         <button class="btn bsm" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);color:var(--gold);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:5px 10px;cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="printFicha('${c.id}')">
@@ -1851,16 +1873,16 @@ function viewCli(id){
   const osCount=DB.orders.filter(o=>o.clientId===id).length;
   let html=`
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-      ${[['Nome',c.name],['Tipo',c.tipo||'\u2014'],['Telefone',c.tel||'\u2014'],['E-mail',c.email||'\u2014'],['CPF/CNPJ',c.doc||'\u2014'],['Contrato',c.contrato||'\u2014'],['Plano',c.plano||'\u2014'],['Status',c.status],['Cadastro',c.dtcad?fmtD(c.dtcad):'\u2014'],['Pr\u00F3x. Revis\u00E3o',c.revisao?fmtD(c.revisao):'\u2014'],['OS Abertas',String(DB.orders.filter(o=>o.clientId===id&&o.status!=='concluida').length)],['OS Total',String(osCount)]].map(([l,v])=>`<div><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:3px">${l}</div><div style="font-size:13px;font-weight:600">${v}</div></div>`).join('')}
+      ${[['Nome',esc(c.name)],['Tipo',esc(c.tipo||'\u2014')],['Telefone',esc(c.tel||'\u2014')],['E-mail',esc(c.email||'\u2014')],['CPF/CNPJ',esc(c.doc||'\u2014')],['Contrato',esc(c.contrato||'\u2014')],['Plano',esc(c.plano||'\u2014')],['Status',esc(c.status)],['Cadastro',c.dtcad?fmtD(c.dtcad):'\u2014'],['Pr\u00F3x. Revis\u00E3o',c.revisao?fmtD(c.revisao):'\u2014'],['OS Abertas',String(DB.orders.filter(o=>o.clientId===id&&o.status!=='concluida').length)],['OS Total',String(osCount)]].map(([l,v])=>`<div><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:3px">${l}</div><div style="font-size:13px;font-weight:600">${v}</div></div>`).join('')}
     </div>
-    ${addr?`<div style="margin-bottom:12px;padding:10px 14px;background:var(--d3);border-left:2px solid rgba(201,168,76,.3)"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">Endere\u00E7o</div><div style="font-size:13px">\u1F4CD ${addr}</div>${c.ref?`<div style="font-size:11px;color:var(--gray);margin-top:3px">Ref: ${c.ref}</div>`:''}</div>`:''}`;
+    ${addr?`<div style="margin-bottom:12px;padding:10px 14px;background:var(--d3);border-left:2px solid rgba(201,168,76,.3)"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:4px">Endere\u00E7o</div><div style="font-size:13px">\u1F4CD ${esc(addr)}</div>${c.ref?`<div style="font-size:11px;color:var(--gray);margin-top:3px">Ref: ${esc(c.ref)}</div>`:''}</div>`:''}`;
   if(c.contacts&&c.contacts.length){
     html+=`<div style="margin-bottom:12px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:8px">Contatos Adicionais</div>`;
-    html+=c.contacts.map(ct=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--d3);margin-bottom:5px;font-size:12.5px"><div><div style="font-weight:600">${ct.name||'\u2014'}</div><div style="color:var(--gray);font-size:11px;margin-top:1px">${ct.type}</div></div><div style="color:var(--gold);font-weight:600">${ct.tel||'\u2014'}</div></div>`).join('');
+    html+=c.contacts.map(ct=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--d3);margin-bottom:5px;font-size:12.5px"><div><div style="font-weight:600">${esc(ct.name||'\u2014')}</div><div style="color:var(--gray);font-size:11px;margin-top:1px">${esc(ct.type)}</div></div><div style="color:var(--gold);font-weight:600">${esc(ct.tel||'\u2014')}</div></div>`).join('');
     html+='</div>';
   }
-  if(c.equip)html+=`<div style="margin-bottom:12px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">Equipamentos</div><div style="font-size:12.5px;color:var(--gray);line-height:1.6">\u1F527 ${c.equip}</div></div>`;
-  if(c.obs)html+=`<div style="margin-bottom:12px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">Observa\u00E7\u00F5es</div><div style="font-size:12.5px;color:var(--gray);line-height:1.6;font-style:italic">${c.obs}</div></div>`;
+  if(c.equip)html+=`<div style="margin-bottom:12px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">Equipamentos</div><div style="font-size:12.5px;color:var(--gray);line-height:1.6">\u1F527 ${esc(c.equip)}</div></div>`;
+  if(c.obs)html+=`<div style="margin-bottom:12px"><div style="font-size:9px;letter-spacing:2px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">Observa\u00E7\u00F5es</div><div style="font-size:12.5px;color:var(--gray);line-height:1.6;font-style:italic">${esc(c.obs)}</div></div>`;
   document.getElementById('m-det-t').textContent=c.name;
   document.getElementById('m-det-b').innerHTML=html;
   document.getElementById('m-det-f').innerHTML=`
